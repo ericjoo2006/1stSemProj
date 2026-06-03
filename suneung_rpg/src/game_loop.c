@@ -115,7 +115,8 @@ void run_game() {
         int is_highschool = (player.year >= 4);
 
         /* Study days loop */
-        for (int day = 1; day <= DAYS_PER_SEMESTER; day++) {
+        while (player.current_day <= DAYS_PER_SEMESTER) {
+            int day = player.current_day;
 
             /* 모의고사 mid-semester (고교 only) */
             if (is_highschool && day == MOCK_EXAM_DAY && player.semester <= 2) {
@@ -136,12 +137,12 @@ void run_game() {
                 print_separator();
                 press_enter();
                 run_exam(&player, 2); /* is_midterm=2 means 수능 */
-                /* Game ends after 수능 */
-                player.year = 7; /* exit loop */
+                player.year = 7;
                 break;
             }
 
             run_map_day(&player, &map, day);
+            player.current_day++;
         }
 
         if (player.year > 6) break;
@@ -151,6 +152,7 @@ void run_game() {
 
         /* Advance to next period */
         advance_to_next_period(&player);
+        player.current_day = 1;  /* 새 학기 시작 시 날짜 초기화 */
 
         /* Reset map so player starts from home each semester */
         init_map(&map);

@@ -108,6 +108,7 @@ typedef struct {
     int     item_count;
     int     days_studied;      /* total days studied */
     int     total_score;       /* last exam total */
+    int     current_day;       /* current day within semester (1~DAYS_PER_SEMESTER) */
 } Player;
 
 /* Boss (exam) struct */
