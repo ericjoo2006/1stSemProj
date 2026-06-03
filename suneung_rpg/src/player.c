@@ -26,6 +26,7 @@ void init_player(Player *p, const char *name) {
     p->days_studied = 0;
     p->total_score  = 0;
     p->current_day  = 1;
+    p->mock_exam_done = 0;
 
     /* Init each subject */
     for (int i = 0; i < NUM_SUBJECTS; i++) {

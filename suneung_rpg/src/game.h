@@ -109,6 +109,7 @@ typedef struct {
     int     days_studied;      /* total days studied */
     int     total_score;       /* last exam total */
     int     current_day;       /* current day within semester (1~DAYS_PER_SEMESTER) */
+    int     mock_exam_done;    /* 1 if 모의고사 already taken this semester */
 } Player;
 
 /* Boss (exam) struct */

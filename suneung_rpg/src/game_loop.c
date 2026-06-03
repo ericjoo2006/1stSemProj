@@ -119,11 +119,12 @@ void run_game() {
             int day = player.current_day;
 
             /* 모의고사 mid-semester (고교 only) */
-            if (is_highschool && day == MOCK_EXAM_DAY && player.semester <= 2) {
-                /* 3월(sem1 day8), 9월(sem2 day8) */
-                (void)(player.semester); /* semester used for boss creation below */
+            if (is_highschool && day == MOCK_EXAM_DAY
+                    && player.semester <= 2 && !player.mock_exam_done) {
+                (void)(player.semester);
                 printf("\n  [모의고사가 있습니다!]\n");
-                run_exam(&player, 0); /* is_midterm=0 means 모의고사 */
+                run_exam(&player, 0);
+                player.mock_exam_done = 1;  /* 이번 학기 모의고사 완료 표시 */
             }
 
             /* Final boss: 수능 (고3, 2학기 마지막 날) */
@@ -152,7 +153,8 @@ void run_game() {
 
         /* Advance to next period */
         advance_to_next_period(&player);
-        player.current_day = 1;  /* 새 학기 시작 시 날짜 초기화 */
+        player.current_day    = 1;   /* 새 학기 날짜 초기화 */
+        player.mock_exam_done = 0;   /* 새 학기 모의고사 플래그 초기화 */
 
         /* Reset map so player starts from home each semester */
         init_map(&map);
