@@ -1,0 +1,420 @@
+#include "game.h"
+
+/*
+   MAP LAYOUT  (MAP_ROWS=8, MAP_COLS=10)
+   Each cell is one character.
+
+   Legend:
+     #  = 벽/경계
+     .  = 빈 땅 (이동 불가)
+        = 도로 (이동 가능)
+     H  = 집
+     S  = 학교
+     A  = 학원
+     P  = PC방
+     C  = 편의점
+     L  = 도서관
+     K  = 공원
+     R  = 독서실
+     @  = 플레이어 (런타임에 덮어씀)
+
+   좌표: grid[row][col], row 0=위, row 7=아래
+*/
+
+static const char BASE_MAP[MAP_ROWS][MAP_COLS + 1] = {
+    "##########",   /* row 0: 위쪽 벽 */
+    "#S  .  C #",   /* row 1: 학교(1,1), 편의점(1,7) */
+    "#   .    #",   /* row 2: 도로 */
+    "#L  K  R #",   /* row 3: 도서관(3,1), 공원(3,4), 독서실(3,7) */
+    "#   .    #",   /* row 4: 도로 */
+    "#H  .  P #",   /* row 5: 집(5,1), PC방(5,7) */
+    "#   .  A #",   /* row 6: 도로, 학원(6,7) */
+    "##########"    /* row 7: 아래쪽 벽 */
+};
+
+/* Tile display strings with color codes (ANSI) */
+/* Format: tile_char -> display label shown in legend */
+typedef struct {
+    char  tile;
+    const char *label;
+    const char *color; /* ANSI escape */
+} TileInfo;
+
+static const TileInfo TILE_TABLE[] = {
+    { TILE_HOME,      "H:집      ", "\033[33m" },   /* yellow */
+    { TILE_SCHOOL,    "S:학교    ", "\033[36m" },   /* cyan */
+    { TILE_HAGWON,    "A:학원    ", "\033[35m" },   /* magenta */
+    { TILE_PCBANG,    "P:PC방    ", "\033[31m" },   /* red */
+    { TILE_STORE,     "C:편의점  ", "\033[32m" },   /* green */
+    { TILE_LIBRARY,   "L:도서관  ", "\033[34m" },   /* blue */
+    { TILE_PARK,      "K:공원    ", "\033[32m" },   /* green */
+    { TILE_STUDYROOM, "R:독서실  ", "\033[35m" },   /* magenta */
+    { TILE_PLAYER,    "@:나      ", "\033[1;37m"},   /* bold white */
+    { 0, NULL, NULL }
+};
+#define ANSI_RESET "\033[0m"
+
+/* ------------------------------------------------
+   init_map
+   Copies the base map template into the GameMap,
+   places player at starting position (home).
+   ------------------------------------------------ */
+void init_map(GameMap *m) {
+    for (int r = 0; r < MAP_ROWS; r++) {
+        for (int c = 0; c < MAP_COLS; c++) {
+            m->grid[r][c] = BASE_MAP[r][c];
+        }
+    }
+    /* Player starts at home: row 5, col 1 */
+    m->player_row  = 5;
+    m->player_col  = 1;
+    m->under_player = TILE_HOME;
+    m->grid[m->player_row][m->player_col] = TILE_PLAYER;
+}
+
+/* ------------------------------------------------
+   print_map
+   Renders the 2D grid with a legend.
+   ------------------------------------------------ */
+void print_map(const GameMap *m) {
+    printf("\n  +----- 동네 지도 ------+\n");
+
+    for (int r = 0; r < MAP_ROWS; r++) {
+        printf("  |");
+        for (int c = 0; c < MAP_COLS; c++) {
+            char tile = m->grid[r][c];
+            /* Colorize special tiles */
+            const char *color = NULL;
+            for (int t = 0; TILE_TABLE[t].tile != 0; t++) {
+                if (TILE_TABLE[t].tile == tile) {
+                    color = TILE_TABLE[t].color;
+                    break;
+                }
+            }
+            if (color) printf("%s%c%s", color, tile, ANSI_RESET);
+            else        printf("%c", tile);
+        }
+        printf("|\n");
+    }
+
+    printf("  +----------------------+\n");
+
+    /* Legend */
+    printf("  ");
+    for (int t = 0; TILE_TABLE[t].tile != 0; t++) {
+        printf("%s%s%s  ",
+               TILE_TABLE[t].color,
+               TILE_TABLE[t].label,
+               ANSI_RESET);
+        if ((t + 1) % 4 == 0) printf("\n  ");
+    }
+    printf("\n");
+    printf("  이동: W(위) A(왼) S(아래) D(오른) | Q: 행동 메뉴\n");
+}
+
+/* ------------------------------------------------
+   move_player
+   Moves player one step in direction (W/A/S/D).
+   Returns the tile the player lands on,
+   or 0 if the move was blocked.
+   ------------------------------------------------ */
+int move_player(GameMap *m, char direction) {
+    int new_row = m->player_row;
+    int new_col = m->player_col;
+
+    switch (direction) {
+        case 'W': case 'w': new_row--; break;
+        case 'S': case 's': new_row++; break;
+        case 'A': case 'a': new_col--; break;
+        case 'D': case 'd': new_col++; break;
+        default: return 0;
+    }
+
+    /* Bounds check */
+    if (new_row < 0 || new_row >= MAP_ROWS ||
+        new_col < 0 || new_col >= MAP_COLS)
+        return 0;
+
+    char dest = m->grid[new_row][new_col];
+
+    /* Can't walk into walls or impassable terrain */
+    if (dest == TILE_WALL || dest == '#')
+        return 0;
+
+    /* Restore tile under old player position */
+    m->grid[m->player_row][m->player_col] = m->under_player;
+
+    /* Save tile at new position, place player */
+    m->under_player = dest;
+    m->player_row   = new_row;
+    m->player_col   = new_col;
+    m->grid[new_row][new_col] = TILE_PLAYER;
+
+    return (unsigned char)m->under_player;
+}
+
+/* ------------------------------------------------
+   tile_action
+   Performs the action for the tile the player
+   is currently standing on.
+   Returns 1 if the day should end, 0 if still free.
+   ------------------------------------------------ */
+static int tile_action(Player *p, char tile) {
+    switch (tile) {
+        case TILE_HOME:
+            printf("\n[집] 집에서 쉽니다...\n");
+            rest(p);
+            return 1;  /* uses up the day */
+
+        case TILE_SCHOOL:
+            printf("\n[학교] 자습실에서 공부합니다.\n");
+            self_study(p);
+            return 1;
+
+        case TILE_HAGWON:
+            printf("\n[학원] 어떤 과목 학원에 갈까요?\n");
+            for (int i = 0; i < NUM_SUBJECTS; i++)
+                printf("  %d. %s\n", i + 1, p->subjects[i].name);
+            {
+                int s = get_int_input("선택: ", 1, NUM_SUBJECTS);
+                go_to_hagwon(p, s - 1);
+            }
+            return 1;
+
+        case TILE_PCBANG:
+            printf("\n[PC방] 스트레스를 풀어봅시다.\n");
+            visit_pc_bang(p);
+            return 1;
+
+        case TILE_STORE: {
+            printf("\n[편의점] 잔액: %d원\n\n", p->money);
+            printf("  1. 물건 구매\n");
+            printf("  2. 알바하기 (4시간, +15,000원)\n");
+            printf("  3. 그냥 지나치기\n");
+            int menu = get_int_input("선택: ", 1, 3);
+
+            if (menu == 3) return 0;
+
+            /* ── 알바 ── */
+            if (menu == 2) {
+                if (HAS_STATUS(p, STATUS_SICK)) {
+                    printf("  몸이 아파서 알바를 할 수 없습니다.\n");
+                    return 0;
+                }
+                printf("\n  [편의점 알바] 4시간 근무...\n");
+                int wage       = 15000;
+                int stamina_cost = 30;
+                int stress_gain  = 15;
+
+                /* 피곤 상태면 힘들어서 스트레스 추가 */
+                if (HAS_STATUS(p, STATUS_TIRED)) {
+                    stress_gain += 10;
+                    printf("  피곤한 상태라 더 힘드네...\n");
+                }
+
+                p->money   += wage;
+                p->stamina -= stamina_cost;
+                p->stress  += stress_gain;
+                if (p->stamina < 0) p->stamina = 0;
+                if (p->stress > 100) p->stress = 100;
+
+                /* 랜덤 알바 이벤트 */
+                int event = rand() % 4;
+                switch (event) {
+                    case 0:
+                        printf("  진상 손님을 만났다... 스트레스 +5\n");
+                        p->stress += 5;
+                        break;
+                    case 1:
+                        printf("  사장님한테 칭찬받았다! 용돈 +3,000원 팁!\n");
+                        p->money += 3000;
+                        break;
+                    case 2:
+                        printf("  조용한 알바였다. 틈틈이 공부도 했다.\n");
+                        p->subjects[SUBJ_KOREAN].xp += 10;
+                        break;
+                    case 3:
+                        printf("  유통기한 지난 삼각김밥을 얻었다. 체력 +5\n");
+                        p->stamina += 5;
+                        if (p->stamina > p->max_stamina) p->stamina = p->max_stamina;
+                        break;
+                }
+
+                printf("  알바 완료! +%d원  (체력 -%d, 스트레스 +%d)\n",
+                       wage, stamina_cost, stress_gain);
+
+                if (p->stamina <= 30) ADD_STATUS(p, STATUS_TIRED);
+                if (p->stress >= 80)  ADD_STATUS(p, STATUS_SICK);
+                return 1; /* 하루 소비 */
+            }
+
+            /* ── 구매 ── */
+            printf("\n  1. 에너지 드링크 (3,000원)  - 체력 +20\n");
+            printf("  2. 비타민C       (5,000원)  - 스트레스 -20\n");
+            printf("  3. 집중력 드링크 (8,000원)  - 집중 버프\n");
+            printf("  4. 치킨          (15,000원) - 체력+30, 스트레스-15\n");
+            printf("  5. 취소\n");
+            int choice = get_int_input("선택: ", 1, 5);
+            if (choice == 5) return 0;
+            Item item;
+            memset(&item, 0, sizeof(Item));
+            item.quantity = 1;
+            int cost = 0;
+            switch (choice) {
+                case 1: strcpy(item.name,"에너지 드링크"); strcpy(item.description,"체력 +20"); item.stamina_restore=20; cost=3000; break;
+                case 2: strcpy(item.name,"비타민C");       strcpy(item.description,"스트레스 -20"); item.stress_reduce=20; cost=5000; break;
+                case 3: strcpy(item.name,"집중력 드링크"); strcpy(item.description,"집중 버프"); item.study_bonus=1; cost=8000; break;
+                case 4: strcpy(item.name,"치킨");          strcpy(item.description,"체력+30, 스트레스-15"); item.stamina_restore=30; item.stress_reduce=15; cost=15000; break;
+            }
+            if (p->money < cost) { printf("돈이 부족합니다!\n"); return 0; }
+            p->money -= cost;
+            add_item(p, item);
+            printf("[%s] 구매! (-%d원)\n", item.name, cost);
+            return 0;
+        }
+
+        case TILE_LIBRARY:
+            printf("\n[도서관] 조용한 환경에서 집중 공부합니다.\n");
+            /* Library gives STATUS_FOCUSED before studying */
+            ADD_STATUS(p, STATUS_FOCUSED);
+            printf("  집중력 버프 발동!\n");
+            self_study(p);
+            return 1;
+
+        case TILE_PARK:
+            printf("\n[공원] 산책하며 스트레스를 해소합니다.\n");
+            {
+                int s_before = p->stress;
+                p->stress -= 25;
+                if (p->stress < 0) p->stress = 0;
+                p->stamina += 15;
+                if (p->stamina > p->max_stamina) p->stamina = p->max_stamina;
+                printf("  스트레스 -%d, 체력 +15\n", s_before - p->stress);
+                if (p->stress < 80) REMOVE_STATUS(p, STATUS_SICK);
+                if (p->stress < 40) REMOVE_STATUS(p, STATUS_STRESSED);
+            }
+            return 1;
+
+        case TILE_STUDYROOM:
+            printf("\n[독서실] 조용한 독서실에서 밤새 공부합니다.\n");
+            {
+                /* Studyroom: pay 5000, get focused buff + extra hours */
+                int cost = 5000;
+                if (p->money < cost) {
+                    printf("  독서실 이용료 부족 (5,000원 필요)\n");
+                    return 0;
+                }
+                p->money -= cost;
+                ADD_STATUS(p, STATUS_FOCUSED);
+                ADD_STATUS(p, STATUS_ENERGIZED);
+                printf("  집중+에너지 버프 발동! (-%d원)\n", cost);
+                self_study(p);
+            }
+            return 1;
+
+        default:
+            /* Standing on road/empty — show action menu */
+            return 0;
+    }
+}
+
+/* ------------------------------------------------
+   run_map_day
+   One full in-game day using the map interface.
+   Player moves around until they perform a
+   day-ending action (or press Q for the old menu).
+   ------------------------------------------------ */
+void run_map_day(Player *p, GameMap *m, int day) {
+    const char *year_names[] = {"", "중1", "중2", "중3", "고1", "고2", "고3"};
+    int day_done = 0;
+
+    while (!day_done) {
+        clear_screen();
+
+        /* Header */
+        printf("\n  [%s - %d학기 - %d일차]  용돈: %d원\n",
+               year_names[p->year], p->semester, day, p->money);
+        printf("  HP:%d  체력:%d  스트레스:%d  상태:",
+               p->hp, p->stamina, p->stress);
+        print_status_flags(p->status_flags);
+
+        /* Draw map */
+        print_map(m);
+
+        /* Show what's underfoot */
+        char cur = m->under_player;
+        if (cur != TILE_ROAD && cur != TILE_EMPTY && cur != ' ') {
+            printf("\n  >> 현재 위치: ");
+            for (int t = 0; TILE_TABLE[t].tile != 0; t++) {
+                if (TILE_TABLE[t].tile == cur) {
+                    printf("%s%s%s", TILE_TABLE[t].color,
+                           TILE_TABLE[t].label, ANSI_RESET);
+                    break;
+                }
+            }
+            printf(" << [Enter: 입장]  또는 이동\n");
+        }
+
+        printf("\n  입력 (W/A/S/D 이동 | Enter: 장소 입장 | I: 인벤 | T: 성적 | V: 저장 | Q: 하루 끝내기): ");
+        fflush(stdout);
+
+        /* Read single char without Enter */
+        char input = 0;
+        {
+            char buf[8];
+            if (fgets(buf, sizeof(buf), stdin)) {
+                input = buf[0];
+                /* fgets consumed the newline */
+            }
+        }
+
+        if (input == '\n' || input == '\r' || input == 0) {
+            /* Enter = interact with current tile */
+            int used_day = tile_action(p, m->under_player);
+            if (used_day) {
+                press_enter();
+                day_done = 1;
+            }
+        }
+        else if (input == 'W' || input == 'w' ||
+                 input == 'A' || input == 'a' ||
+                 input == 'S' || input == 's' ||
+                 input == 'D' || input == 'd') {
+            move_player(m, input);
+        }
+        else if (input == 'I' || input == 'i') {
+            /* Inventory */
+            if (p->item_count == 0) {
+                printf("  [인벤토리가 비어 있습니다.]\n");
+            } else {
+                printf("\n[인벤토리]\n");
+                for (int i = 0; i < p->item_count; i++)
+                    printf("  %d. %-15s x%d - %s\n",
+                           i + 1, p->inventory[i].name,
+                           p->inventory[i].quantity,
+                           p->inventory[i].description);
+                printf("  %d. 닫기\n", p->item_count + 1);
+                int c = get_int_input("사용할 번호: ", 1, p->item_count + 1);
+                if (c <= p->item_count) use_item(p, c - 1);
+            }
+            press_enter();
+        }
+        else if (input == 'T' || input == 't') {
+            print_subjects(p);
+            press_enter();
+        }
+        else if (input == 'V' || input == 'v') {
+            save_game(p);
+            press_enter();
+        }
+        else if (input == 'Q' || input == 'q') {
+            /* Force end day (wasted day, minor stress) */
+            printf("  [하루를 아무것도 안 하고 보냈다...]\n");
+            p->stress += 3;
+            press_enter();
+            day_done = 1;
+        }
+    }
+
+    apply_day_end(p);
+}
