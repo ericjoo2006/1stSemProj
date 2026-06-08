@@ -88,10 +88,16 @@ int run_battle(Player *p, Boss *boss) {
     /* Activate exam mode */
     ADD_STATUS(p, STATUS_EXAM_MODE);
 
+    /* 전투 전 hp/max_hp 백업 (전투 후 복구용) */
+    int saved_hp     = p->hp;
+    int saved_max_hp = p->max_hp;
+
     /* Player battle HP = average of subject scores */
     int total = get_total_score(p);
-    p->hp = total / NUM_SUBJECTS;
     p->max_hp = 100;
+    p->hp     = total / NUM_SUBJECTS;   /* 평균 점수가 전투 HP */
+    if (p->hp > p->max_hp) p->hp = p->max_hp;
+    if (p->hp < 1)         p->hp = 1;
 
     int round = 1;
 
@@ -183,6 +189,10 @@ int run_battle(Player *p, Boss *boss) {
     }
 
     REMOVE_STATUS(p, STATUS_EXAM_MODE);
+
+    /* 전투 HP를 원래 값으로 복구 */
+    p->hp     = saved_hp;
+    p->max_hp = saved_max_hp;
 
     if (p->hp <= 0) {
         printf("\n\n  ╔══════════════════════════════╗\n");

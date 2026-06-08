@@ -15,6 +15,15 @@
 #define SAVE_FILE        "saves/save.dat"
 #define AUTOSAVE_FILE    "saves/autosave.dat"
 
+/* Action Point constants */
+#define AP_PER_DAY       4   /* 하루 기본 AP */
+#define AP_STUDY         2   /* 자습·학원·도서관·독서실 */
+#define AP_REST          1   /* 집에서 쉬기·공원 */
+#define AP_PLAY          1   /* PC방 */
+#define AP_STORE_BUY     0   /* 편의점 구매 (AP 소모 없음) */
+#define AP_STORE_WORK    2   /* 편의점 알바 */
+#define AP_FREE          0   /* 인벤토리·저장 (AP 소모 없음) */
+
 /* Subjects index */
 #define SUBJ_KOREAN      0
 #define SUBJ_MATH        1
@@ -112,6 +121,7 @@ typedef struct {
     int     total_score;       /* last exam total */
     int     current_day;       /* current day within month (1~DAYS_PER_MONTH) */
     int     mock_exam_done;    /* 1 if this month's 모의고사 already done */
+    int     daily_ap;          /* Action Points remaining today (reset each day) */
 } Player;
 
 /* Boss (exam) struct */
@@ -139,11 +149,11 @@ int    get_total_score(const Player *p);
 void   apply_day_end(Player *p);
 
 /* study.c */
-void   study_subject(Player *p, int subject_index, int hours);
-void   go_to_hagwon(Player *p, int subject_index);
-void   self_study(Player *p);
+int    study_subject(Player *p, int subject_index, int hours);
+int    go_to_hagwon(Player *p, int subject_index);
+int    self_study(Player *p);
 void   rest(Player *p);
-void   visit_pc_bang(Player *p);
+int    visit_pc_bang(Player *p);
 
 /* battle.c */
 int    run_battle(Player *p, Boss *boss);

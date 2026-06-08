@@ -231,19 +231,11 @@ void run_game() {
             while (player.current_day <= DAYS_PER_MONTH) {
                 int day = player.current_day;
 
-                /* 모의고사: 해당 월 마지막 날 */
-                if (month_has_mock(player.month)
-                        && day == DAYS_PER_MONTH
-                        && !player.mock_exam_done) {
-                    run_exam(&player, 0);
-                    player.mock_exam_done = 1;
-                    /* 모의고사 후 바로 다음 달로 */
-                    break;
-                }
-
                 /* 수능: 고3 12월 마지막 날 */
                 if (player.year == 3 && player.month == 12
                         && day == DAYS_PER_MONTH) {
+                    run_map_day(&player, &map, day);   /* 마지막 날 자유행동 */
+                    player.current_day++;
                     clear_screen();
                     print_separator();
                     printf("  드디어 수능 날이 왔습니다!\n");
@@ -255,14 +247,21 @@ void run_game() {
                     goto game_end;
                 }
 
-                /* 중간/기말고사: 해당 월 마지막 날 */
-                if (month_has_midterm(player.month) && day == DAYS_PER_MONTH) {
-                    run_exam(&player, 1);
-                    break;
-                }
-                if (month_has_final(player.month) && day == DAYS_PER_MONTH) {
-                    run_exam(&player, 2);
-                    break;
+                /* 중간/기말/모의고사: 마지막 날 자유행동 먼저, 그 다음 시험 */
+                if (day == DAYS_PER_MONTH) {
+                    run_map_day(&player, &map, day);
+                    player.current_day++;
+                    autosave(&player);
+
+                    if (month_has_mock(player.month) && !player.mock_exam_done) {
+                        run_exam(&player, 0);
+                        player.mock_exam_done = 1;
+                    } else if (month_has_midterm(player.month)) {
+                        run_exam(&player, 1);
+                    } else if (month_has_final(player.month)) {
+                        run_exam(&player, 2);
+                    }
+                    break;   /* 시험 후 다음 달로 */
                 }
 
                 run_map_day(&player, &map, day);

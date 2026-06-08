@@ -28,6 +28,7 @@ void init_player(Player *p, const char *name) {
     p->total_score  = 0;
     p->current_day  = 1;
     p->mock_exam_done = 0;
+    p->daily_ap     = AP_PER_DAY;
 
     /* Init each subject */
     for (int i = 0; i < NUM_SUBJECTS; i++) {
@@ -52,21 +53,59 @@ void init_player(Player *p, const char *name) {
    print_player_status
    ------------------------------------------------ */
 void print_player_status(const Player *p) {
+    /*
+       박스 내부 표시폭: 36
+       전체 표시폭: ║(1) + 36 + ║(1) = 38
+       ╔════...════╗ : ═ 36개
+    */
+    #define BOX36 "════════════════════════════════════"
+
     const char *year_names[] = { "", "고1", "고2", "고3" };
-    printf("\n╔══════════════════════════════════════╗\n");
-    printf("║  학생: %-10s  %s  %d월  %d세     ║\n",
-           p->name,
-           (p->year >= 1 && p->year <= 3) ? year_names[p->year] : "??",
-           p->month,
-           p->age);
-    printf("╠══════════════════════════════════════╣\n");
-    printf("║  HP:      %3d / %3d                  ║\n", p->hp, p->max_hp);
-    printf("║  체력:    %3d / %3d                  ║\n", p->stamina, p->max_stamina);
-    printf("║  스트레스:%3d / 100                  ║\n", p->stress);
-    printf("║  용돈:    %6d원                    ║\n", p->money);
-    printf("║  상태: ");
-    print_status_flags(p->status_flags);
-    printf("╚══════════════════════════════════════╝\n");
+    const char *yn = (p->year >= 1 && p->year <= 3) ? year_names[p->year] : "??";
+
+    /* AP 바 문자열 생성 */
+    char ap_bar[AP_PER_DAY * 4 + 1];  /* ■/□ 각 3바이트 UTF-8 */
+    ap_bar[0] = '\0';
+    for (int i = 0; i < AP_PER_DAY; i++)
+        strcat(ap_bar, i < p->daily_ap ? "■" : "□");
+
+    /* 상태 플래그를 문자열 버퍼에 수집 */
+    char status_buf[64] = "";
+    if (p->status_flags == STATUS_NORMAL) {
+        strcpy(status_buf, "정상");
+    } else {
+        if (p->status_flags & STATUS_TIRED)     strcat(status_buf, "[피곤]");
+        if (p->status_flags & STATUS_SICK)      strcat(status_buf, "[아픔]");
+        if (p->status_flags & STATUS_FOCUSED)   strcat(status_buf, "[집중]");
+        if (p->status_flags & STATUS_STRESSED)  strcat(status_buf, "[스트레스]");
+        if (p->status_flags & STATUS_ENERGIZED) strcat(status_buf, "[에너지]");
+        if (p->status_flags & STATUS_EXAM_MODE) strcat(status_buf, "[시험중]");
+        if (p->status_flags & STATUS_GAME_OVER) strcat(status_buf, "[게임오버]");
+    }
+
+    /*
+       각 줄을 printf로 직접 패딩:
+       내부 표시폭 36, 앞 "║  " 포함하여 내용+패딩 후 "║"
+       한글 1자 = 표시폭 2, ASCII = 1 이므로 직접 계산.
+       단순화: 고정 포맷으로 각 줄을 정확히 맞춤.
+    */
+    printf("\n╔" BOX36 "╗\n");
+    /* 학생 정보 줄: "  학생: NAME  YN  MM월  AGE세  "
+       NAME은 %-8s (최대 8 표시폭 가정), YN=고N(3), MM=최대2자리, AGE=2자리
+       고정 포맷으로 줄 맞춤 */
+    printf("║  학생: %-8s  %s  %2d월  %2d세    ║\n",
+           p->name, yn, p->month, p->age);
+    printf("╠" BOX36 "╣\n");
+    printf("║  HP:       %3d / %-3d               ║\n", p->hp,      p->max_hp);
+    printf("║  체력:     %3d / %-3d               ║\n", p->stamina, p->max_stamina);
+    printf("║  스트레스: %3d / 100               ║\n", p->stress);
+    printf("║  용돈:     %6d원                ║\n",    p->money);
+    printf("║  AP:   [%s]  %d / %d               ║\n",
+           ap_bar, p->daily_ap, AP_PER_DAY);
+    printf("║  상태: %-26s║\n", status_buf);
+    printf("╚" BOX36 "╝\n");
+
+    #undef BOX36
 }
 
 /* ------------------------------------------------
@@ -177,6 +216,9 @@ void apply_day_end(Player *p) {
     /* Stamina partial recovery */
     p->stamina += 20;
     if (p->stamina > p->max_stamina) p->stamina = p->max_stamina;
+
+    /* Reset AP for next day */
+    p->daily_ap = AP_PER_DAY;
 
     /* Update status flags */
     if (p->stamina <= 30)

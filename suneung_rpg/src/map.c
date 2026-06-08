@@ -280,58 +280,58 @@ static int friend_event_store(Player *p) {
    tile_action
    Performs the action for the tile the player
    is currently standing on.
-   Returns 1 if the day should end, 0 if still free.
+   Returns AP consumed (양수), 0 (AP 소모 없는 행동), -1 (취소/실패).
    ------------------------------------------------ */
 static int tile_action(Player *p, char tile) {
     switch (tile) {
         case TILE_HOME:
-            printf("\n[집] 집에서 쉽니다...\n");
+            printf("\n[집] 집에서 쉽니다... (AP -1)\n");
             rest(p);
-            return 1;  /* uses up the day */
+            return AP_REST;  /* rest()는 항상 성공 */
 
         case TILE_SCHOOL:
-            printf("\n[학교] 자습실에서 공부합니다.\n");
-            self_study(p);
+            printf("\n[학교] 자습실에서 공부합니다. (AP -2)\n");
+            if (!self_study(p)) return -1;
             friend_event_study(p, "자습실");
-            return 1;
+            return AP_STUDY;
 
         case TILE_HAGWON:
-            printf("\n[학원] 어떤 과목 학원에 갈까요?\n");
+            printf("\n[학원] 어떤 과목 학원에 갈까요? (AP -2)\n");
             for (int i = 0; i < NUM_SUBJECTS; i++)
                 printf("  %d. %s\n", i + 1, p->subjects[i].name);
             {
                 int s = get_int_input("선택: ", 1, NUM_SUBJECTS);
-                go_to_hagwon(p, s - 1);
+                if (!go_to_hagwon(p, s - 1)) return -1;
             }
-            return 1;
+            return AP_STUDY;
 
         case TILE_PCBANG:
-            printf("\n[PC방] 스트레스를 풀어봅시다.\n");
-            visit_pc_bang(p);
+            printf("\n[PC방] 스트레스를 풀어봅시다. (AP -1)\n");
+            if (!visit_pc_bang(p)) return -1;
             friend_event_play(p, "PC방");
-            return 1;
+            return AP_PLAY;
 
         case TILE_STORE: {
             printf("\n[편의점] 잔액: %d원\n\n", p->money);
-            printf("  1. 물건 구매\n");
-            printf("  2. 알바하기 (4시간, +15,000원)\n");
-            printf("  3. 그냥 지나치기\n");
+            printf("  1. 물건 구매      (AP -0)\n");
+            printf("  2. 알바하기       (AP -2, +15,000원)\n");
+            printf("  3. 그냥 지나치기  (AP 소모 없음)\n");
             int menu = get_int_input("선택: ", 1, 3);
 
-            if (menu == 3) return 0;
+            if (menu == 3) return -1;
 
             /* ── 알바 ── */
             if (menu == 2) {
                 if (HAS_STATUS(p, STATUS_SICK)) {
                     printf("  몸이 아파서 알바를 할 수 없습니다.\n");
-                    return 0;
+                    press_enter();
+                    return -1;  /* AP 소모 없이 취소, 다른 행동 가능 */
                 }
                 printf("\n  [편의점 알바] 4시간 근무...\n");
-                int wage       = 15000;
+                int wage         = 15000;
                 int stamina_cost = 30;
                 int stress_gain  = 15;
 
-                /* 피곤 상태면 힘들어서 스트레스 추가 */
                 if (HAS_STATUS(p, STATUS_TIRED)) {
                     stress_gain += 10;
                     printf("  피곤한 상태라 더 힘드네...\n");
@@ -340,10 +340,9 @@ static int tile_action(Player *p, char tile) {
                 p->money   += wage;
                 p->stamina -= stamina_cost;
                 p->stress  += stress_gain;
-                if (p->stamina < 0) p->stamina = 0;
-                if (p->stress > 100) p->stress = 100;
+                if (p->stamina < 0)   p->stamina = 0;
+                if (p->stress > 100)  p->stress  = 100;
 
-                /* 랜덤 알바 이벤트 */
                 int event = rand() % 4;
                 switch (event) {
                     case 0:
@@ -370,45 +369,48 @@ static int tile_action(Player *p, char tile) {
 
                 if (p->stamina <= 30) ADD_STATUS(p, STATUS_TIRED);
                 if (p->stress >= 80)  ADD_STATUS(p, STATUS_SICK);
-                return 1; /* 하루 소비 */
+                return AP_STORE_WORK;
             }
 
-            /* ── 구매 ── */
+            /* ── 구매 (AP 소모 없음) ── */
             printf("\n  1. 에너지 드링크 (3,000원)  - 체력 +20\n");
             printf("  2. 비타민C       (5,000원)  - 스트레스 -20\n");
             printf("  3. 집중력 드링크 (8,000원)  - 집중 버프\n");
             printf("  4. 치킨          (15,000원) - 체력+30, 스트레스-15\n");
             printf("  5. 취소\n");
             int choice = get_int_input("선택: ", 1, 5);
-            if (choice == 5) return 0;
+            if (choice == 5) return -1;
             Item item;
             memset(&item, 0, sizeof(Item));
             item.quantity = 1;
             int cost = 0;
             switch (choice) {
-                case 1: strcpy(item.name,"에너지 드링크"); strcpy(item.description,"체력 +20"); item.stamina_restore=20; cost=3000; break;
-                case 2: strcpy(item.name,"비타민C");       strcpy(item.description,"스트레스 -20"); item.stress_reduce=20; cost=5000; break;
-                case 3: strcpy(item.name,"집중력 드링크"); strcpy(item.description,"집중 버프"); item.study_bonus=1; cost=8000; break;
+                case 1: strcpy(item.name,"에너지 드링크"); strcpy(item.description,"체력 +20");             item.stamina_restore=20;                  cost=3000;  break;
+                case 2: strcpy(item.name,"비타민C");       strcpy(item.description,"스트레스 -20");         item.stress_reduce=20;                    cost=5000;  break;
+                case 3: strcpy(item.name,"집중력 드링크"); strcpy(item.description,"집중 버프");            item.study_bonus=1;                        cost=8000;  break;
                 case 4: strcpy(item.name,"치킨");          strcpy(item.description,"체력+30, 스트레스-15"); item.stamina_restore=30; item.stress_reduce=15; cost=15000; break;
             }
-            if (p->money < cost) { printf("돈이 부족합니다!\n"); return 0; }
+            if (p->money < cost) { printf("돈이 부족합니다!\n"); return -1; }
             p->money -= cost;
             add_item(p, item);
             printf("[%s] 구매! (-%d원)\n", item.name, cost);
             friend_event_store(p);
-            return 0;
+            return AP_STORE_BUY;
         }
 
         case TILE_LIBRARY:
-            printf("\n[도서관] 조용한 환경에서 집중 공부합니다.\n");
+            printf("\n[도서관] 조용한 환경에서 집중 공부합니다. (AP -2)\n");
             ADD_STATUS(p, STATUS_FOCUSED);
             printf("  집중력 버프 발동!\n");
-            self_study(p);
+            if (!self_study(p)) {
+                REMOVE_STATUS(p, STATUS_FOCUSED);  /* 공부 못 하면 버프도 취소 */
+                return -1;
+            }
             friend_event_study(p, "도서관");
-            return 1;
+            return AP_STUDY;
 
         case TILE_PARK:
-            printf("\n[공원] 산책하며 스트레스를 해소합니다.\n");
+            printf("\n[공원] 산책하며 스트레스를 해소합니다. (AP -1)\n");
             {
                 int s_before = p->stress;
                 p->stress -= 25;
@@ -420,44 +422,59 @@ static int tile_action(Player *p, char tile) {
                 if (p->stress < 40) REMOVE_STATUS(p, STATUS_STRESSED);
                 friend_event_play(p, "공원");
             }
-            return 1;
+            return AP_REST;
 
         case TILE_STUDYROOM:
-            printf("\n[독서실] 조용한 독서실에서 밤새 공부합니다.\n");
+            printf("\n[독서실] 조용한 독서실에서 밤새 공부합니다. (AP -2)\n");
             {
                 int cost = 5000;
                 if (p->money < cost) {
                     printf("  독서실 이용료 부족 (5,000원 필요)\n");
-                    return 0;
+                    return -1;
                 }
                 p->money -= cost;
                 ADD_STATUS(p, STATUS_FOCUSED);
                 ADD_STATUS(p, STATUS_ENERGIZED);
                 printf("  집중+에너지 버프 발동! (-%d원)\n", cost);
-                self_study(p);
+                if (!self_study(p)) {
+                    /* 돈은 냈지만 공부 못한 경우 — AP는 소모 안 함 */
+                    REMOVE_STATUS(p, STATUS_FOCUSED);
+                    REMOVE_STATUS(p, STATUS_ENERGIZED);
+                    return -1;
+                }
                 friend_event_study(p, "독서실");
             }
-            return 1;
+            return AP_STUDY;
 
         default:
-            /* Standing on road/empty — show action menu */
-            return 0;
+            return -1;
     }
 }
 
 /* ------------------------------------------------
    run_map_day
    One full in-game day using the map interface.
-   Player moves around until they perform a
-   day-ending action (or press Q for the old menu).
+   Player has AP_PER_DAY action points each day.
+   Moving costs no AP; only tile actions consume AP.
+   Day ends when AP reaches 0 or player presses Q.
    ------------------------------------------------ */
 void run_map_day(Player *p, GameMap *m, int day) {
-    int day_done = 0;
+    /* daily_ap는 전날 apply_day_end()에서 이미 AP_PER_DAY로 초기화됨
+       첫 날(init_player)도 AP_PER_DAY로 시작하므로 여기서는 초기화 불필요 */
 
-    while (!day_done) {
+    /* AP 바 출력 헬퍼 (람다 대신 매크로) */
+    #define PRINT_AP_BAR(ap) \
+        do { \
+            printf("  AP: ["); \
+            for (int _i = 0; _i < AP_PER_DAY; _i++) \
+                printf(_i < (ap) ? "■" : "□"); \
+            printf("] %d / %d\n", (ap), AP_PER_DAY); \
+        } while(0)
+
+    while (p->daily_ap > 0) {
         clear_screen();
 
-        /* Header */
+        /* ── 헤더 ── */
         const char *year_names[] = {"", "고1", "고2", "고3"};
         const char *month_names[] = {
             "","1월","2월","3월","4월","5월","6월",
@@ -473,12 +490,16 @@ void run_map_day(Player *p, GameMap *m, int day) {
         printf("  │  HP:%d  체력:%d  스트레스:%d  상태:",
                p->hp, p->stamina, p->stress);
         print_status_flags(p->status_flags);
+        PRINT_AP_BAR(p->daily_ap);
         printf("  └─────────────────────────────────────────┘\n");
 
-        /* Draw map */
+        /* AP 소모 안내 */
+        printf("  [AP]  자습·학원·도서관·독서실·알바: 2  |  집·공원·PC방: 1  |  편의점 구매·인벤·저장: 0\n");
+
+        /* ── 지도 ── */
         print_map(m);
 
-        /* Show what's underfoot */
+        /* 현재 위치 표시 */
         char cur = m->under_player;
         if (cur != TILE_ROAD && cur != TILE_EMPTY && cur != ' ') {
             printf("\n  >> 현재 위치: ");
@@ -495,32 +516,45 @@ void run_map_day(Player *p, GameMap *m, int day) {
         printf("\n  입력 (W/A/S/D 이동 | Enter: 장소 입장 | I: 인벤 | T: 성적 | V: 저장 | Q: 하루 끝내기): ");
         fflush(stdout);
 
-        /* Read single char without Enter */
+        /* 키 입력 */
         char input = 0;
         {
             char buf[8];
-            if (fgets(buf, sizeof(buf), stdin)) {
+            if (fgets(buf, sizeof(buf), stdin))
                 input = buf[0];
-                /* fgets consumed the newline */
-            }
         }
 
         if (input == '\n' || input == '\r' || input == 0) {
-            /* Enter = interact with current tile */
-            int used_day = tile_action(p, m->under_player);
-            if (used_day) {
+            /* Enter → 장소 입장 */
+            int ap_cost = tile_action(p, m->under_player);
+            if (ap_cost > 0) {
+                /* AP 충분한지 검사 */
+                if (ap_cost > p->daily_ap) {
+                    printf("\n  AP가 부족합니다! (필요: %d, 남은 AP: %d)\n",
+                           ap_cost, p->daily_ap);
+                    printf("  남은 AP로 할 수 있는 행동을 선택하거나 Q로 하루를 마무리하세요.\n");
+                    press_enter();
+                } else {
+                    p->daily_ap -= ap_cost;
+                    press_enter();
+                    if (p->daily_ap == 0) {
+                        printf("\n  ── AP를 모두 소모했습니다. 오늘 하루 수고했어요! ──\n");
+                        press_enter();
+                    }
+                }
+            } else if (ap_cost == 0) {
+                /* AP_STORE_BUY 등 AP 소모 없는 행동 — press_enter만 */
                 press_enter();
-                day_done = 1;
             }
+            /* ap_cost < 0 (행동 취소/무효) 는 아무것도 하지 않음 */
         }
         else if (input == 'W' || input == 'w' ||
                  input == 'A' || input == 'a' ||
                  input == 'S' || input == 's' ||
                  input == 'D' || input == 'd') {
-            move_player(m, input);
+            move_player(m, input);  /* 이동은 AP 소모 없음 */
         }
         else if (input == 'I' || input == 'i') {
-            /* Inventory */
             if (p->item_count == 0) {
                 printf("  [인벤토리가 비어 있습니다.]\n");
             } else {
@@ -545,13 +579,20 @@ void run_map_day(Player *p, GameMap *m, int day) {
             press_enter();
         }
         else if (input == 'Q' || input == 'q') {
-            /* Force end day (wasted day, minor stress) */
-            printf("  [하루를 아무것도 안 하고 보냈다...]\n");
-            p->stress += 3;
+            if (p->daily_ap == AP_PER_DAY) {
+                /* 아무것도 안 한 경우 */
+                printf("  [하루를 아무것도 안 하고 보냈다...] 스트레스 +3\n");
+                p->stress += 3;
+            } else {
+                printf("  [남은 AP %d를 흘려보냈다. 조금 더 할 수 있었는데...]\n",
+                       p->daily_ap);
+            }
             press_enter();
-            day_done = 1;
+            break;  /* AP 남아도 하루 종료 */
         }
     }
+
+    #undef PRINT_AP_BAR
 
     apply_day_end(p);
 }

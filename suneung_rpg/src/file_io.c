@@ -1,11 +1,25 @@
 #include "game.h"
 
+#ifdef _WIN32
+#include <direct.h>
+#define MKDIR(path) _mkdir(path)
+#else
+#include <sys/stat.h>
+#define MKDIR(path) mkdir(path, 0755)
+#endif
+
+/* saves/ 디렉토리가 없으면 생성 */
+static void ensure_save_dir(void) {
+    MKDIR("saves");   /* 이미 있어도 오류 무시 */
+}
+
 /* ------------------------------------------------
    save_game
    Writes Player struct to binary file
    Returns 1 on success, 0 on failure
    ------------------------------------------------ */
 int save_game(const Player *p) {
+    ensure_save_dir();
     FILE *fp = fopen(SAVE_FILE, "wb");
     if (!fp) {
         printf("[저장 오류] 파일을 열 수 없습니다: %s\n", SAVE_FILE);
@@ -48,6 +62,7 @@ int autosave_exists() {
    자동저장 — AUTOSAVE_FILE에 저장, 메시지 간략히
    ------------------------------------------------ */
 int autosave(const Player *p) {
+    ensure_save_dir();
     FILE *fp = fopen(AUTOSAVE_FILE, "wb");
     if (!fp) return 0;
 

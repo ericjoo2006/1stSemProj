@@ -5,21 +5,21 @@
    Study a specific subject for `hours` hours.
    Status flags affect XP gain.
    ------------------------------------------------ */
-void study_subject(Player *p, int subject_index, int hours) {
-    if (subject_index < 0 || subject_index >= NUM_SUBJECTS) return;
+int study_subject(Player *p, int subject_index, int hours) {
+    if (subject_index < 0 || subject_index >= NUM_SUBJECTS) return 0;
 
     Subject *s = &p->subjects[subject_index];
 
     /* Can't study if sick */
     if (HAS_STATUS(p, STATUS_SICK)) {
         printf("몸이 너무 아파서 공부할 수 없습니다...\n");
-        return;
+        return 0;
     }
     /* Stamina cost: 10 per hour */
     int stamina_cost = hours * 10;
     if (p->stamina < stamina_cost) {
         printf("체력이 부족합니다. 먼저 쉬세요!\n");
-        return;
+        return 0;
     }
 
     /* Calculate XP gain */
@@ -55,23 +55,24 @@ void study_subject(Player *p, int subject_index, int hours) {
         ADD_STATUS(p, STATUS_TIRED);
     if (p->stress >= 80)
         ADD_STATUS(p, STATUS_SICK);
+    return 1;
 }
 
 /* ------------------------------------------------
    go_to_hagwon
    Pay money for guaranteed bonus XP
    ------------------------------------------------ */
-void go_to_hagwon(Player *p, int subject_index) {
-    if (subject_index < 0 || subject_index >= NUM_SUBJECTS) return;
+int go_to_hagwon(Player *p, int subject_index) {
+    if (subject_index < 0 || subject_index >= NUM_SUBJECTS) return 0;
 
     int cost = 30000;
     if (p->money < cost) {
         printf("용돈이 부족합니다. (필요: %d원)\n", cost);
-        return;
+        return 0;
     }
     if (HAS_STATUS(p, STATUS_SICK)) {
         printf("아파서 학원에 갈 수 없습니다.\n");
-        return;
+        return 0;
     }
 
     Subject *s = &p->subjects[subject_index];
@@ -83,6 +84,7 @@ void go_to_hagwon(Player *p, int subject_index) {
 
     s->xp    += xp_gain;
     p->stamina -= 15;
+    if (p->stamina < 0) p->stamina = 0;
     p->stress  += 8;
 
     printf("[학원 - %s] 수업 완료! +%d XP (-%d원)\n",
@@ -97,16 +99,17 @@ void go_to_hagwon(Player *p, int subject_index) {
 
     if (p->stamina <= 30) ADD_STATUS(p, STATUS_TIRED);
     if (p->stress >= 80)  ADD_STATUS(p, STATUS_SICK);
+    return 1;
 }
 
 /* ------------------------------------------------
    self_study
    Player chooses a subject to study (1 hour free)
    ------------------------------------------------ */
-void self_study(Player *p) {
+int self_study(Player *p) {
     if (HAS_STATUS(p, STATUS_SICK)) {
         printf("아파서 공부할 수 없습니다.\n");
-        return;
+        return 0;
     }
     print_subjects(p);
 
@@ -117,7 +120,7 @@ void self_study(Player *p) {
     int choice = get_int_input("선택 (1–6): ", 1, NUM_SUBJECTS);
     int hours  = get_int_input("몇 시간 공부? (1–4): ", 1, 4);
 
-    study_subject(p, choice - 1, hours);
+    return study_subject(p, choice - 1, hours);
 }
 
 /* ------------------------------------------------
@@ -156,17 +159,24 @@ void rest(Player *p) {
    Spend money and time to recover stress
    Risk: might get even more stressed if you play too long
    ------------------------------------------------ */
-void visit_pc_bang(Player *p) {
+int visit_pc_bang(Player *p) {
     int cost = 3000;
     if (p->money < cost) {
         printf("용돈이 부족합니다!\n");
-        return;
+        return 0;
     }
 
     printf("\n[PC방에 갔습니다!]\n");
     int hours = get_int_input("몇 시간 플레이? (1–3): ", 1, 3);
 
-    p->money   -= cost * hours;
+    int total_cost = cost * hours;
+    if (p->money < total_cost) {
+        printf("  돈이 부족합니다! (%d시간 = %d원 필요, 현재 %d원)\n",
+               hours, total_cost, p->money);
+        return 0;
+    }
+
+    p->money   -= total_cost;
     p->stress  -= hours * 15;
     p->stamina -= hours * 5;
 
@@ -174,7 +184,7 @@ void visit_pc_bang(Player *p) {
     if (p->stamina < 0) p->stamina = 0;
 
     printf("  스트레스 -%d, 체력 -%d, 지출 -%d원\n",
-           hours * 15, hours * 5, cost * hours);
+           hours * 15, hours * 5, total_cost);
 
     /* Over 2 hours: risk of becoming even more stressed tomorrow */
     if (hours >= 3) {
@@ -184,4 +194,5 @@ void visit_pc_bang(Player *p) {
 
     REMOVE_STATUS(p, STATUS_TIRED);
     if (p->stress < 80) REMOVE_STATUS(p, STATUS_SICK);
+    return 1;
 }
