@@ -13,6 +13,7 @@
 #define NUM_SUBJECTS     6
 #define MAX_ITEMS        10
 #define SAVE_FILE        "saves/save.dat"
+#define AUTOSAVE_FILE    "saves/autosave.dat"
 
 /* Subjects index */
 #define SUBJ_KOREAN      0
@@ -94,8 +95,9 @@ typedef struct {
 /* Player struct */
 typedef struct {
     char    name[MAX_NAME_LEN];
-    int     year;              /* 1–6: 중1,중2,중3,고1,고2,고3 */
-    int     semester;          /* 1 or 2 */
+    int     year;              /* 1–3: 고1, 고2, 고3 */
+    int     month;             /* 3~12: 실제 월 (3월 입학, 12월 기말 후 방학) */
+    int     age;               /* 16(고1입학) ~ 19(고3수능) */
     int     stamina;           /* 0–100; reaches 0 → STATUS_TIRED */
     int     max_stamina;
     int     stress;            /* 0–100; reaches 100 → STATUS_SICK */
@@ -108,8 +110,8 @@ typedef struct {
     int     item_count;
     int     days_studied;      /* total days studied */
     int     total_score;       /* last exam total */
-    int     current_day;       /* current day within semester (1~DAYS_PER_SEMESTER) */
-    int     mock_exam_done;    /* 1 if 모의고사 already taken this semester */
+    int     current_day;       /* current day within month (1~DAYS_PER_MONTH) */
+    int     mock_exam_done;    /* 1 if this month's 모의고사 already done */
 } Player;
 
 /* Boss (exam) struct */
@@ -145,12 +147,16 @@ void   visit_pc_bang(Player *p);
 
 /* battle.c */
 int    run_battle(Player *p, Boss *boss);
-Boss   create_boss(int year, int semester, int is_midterm);
+Boss   create_boss(int year, int month, int exam_type);
 void   print_boss_status(const Boss *b);
 
 /* file_io.c */
 int    save_game(const Player *p);
 int    load_game(Player *p);
+int    autosave(const Player *p);
+int    load_autosave(Player *p);
+int    autosave_exists();
+int    save_exists();
 
 /* ui.c */
 void   print_title();
@@ -168,6 +174,7 @@ void   run_map_day(Player *p, GameMap *m, int day);
 
 /* game_loop.c */
 void   run_game();
-void   advance_to_next_period(Player *p);
+void   advance_month(Player *p);
+int    get_semester(int month);   /* 1~7월=1학기, 8~12월=2학기 */
 
 #endif /* GAME_H */

@@ -13,14 +13,15 @@ void init_player(Player *p, const char *name) {
     memset(p, 0, sizeof(Player));
 
     strncpy(p->name, name, MAX_NAME_LEN - 1);
-    p->year         = 1;
-    p->semester     = 1;
+    p->year         = 1;       /* 고1 */
+    p->month        = 3;       /* 3월 입학 */
+    p->age          = 16;      /* 고1 = 16세 */
     p->stamina      = 100;
     p->max_stamina  = 100;
     p->stress       = 0;
     p->hp           = 100;
     p->max_hp       = 100;
-    p->money        = 50000;   /* 용돈 5만원 */
+    p->money        = 50000;
     p->status_flags = STATUS_NORMAL;
     p->item_count   = 0;
     p->days_studied = 0;
@@ -51,14 +52,13 @@ void init_player(Player *p, const char *name) {
    print_player_status
    ------------------------------------------------ */
 void print_player_status(const Player *p) {
-    const char *year_names[] = {
-        "", "중1", "중2", "중3", "고1", "고2", "고3"
-    };
+    const char *year_names[] = { "", "고1", "고2", "고3" };
     printf("\n╔══════════════════════════════════════╗\n");
-    printf("║  학생: %-10s  학년: %-4s %d학기 ║\n",
+    printf("║  학생: %-10s  %s  %d월  %d세     ║\n",
            p->name,
-           (p->year >= 1 && p->year <= 6) ? year_names[p->year] : "??",
-           p->semester);
+           (p->year >= 1 && p->year <= 3) ? year_names[p->year] : "??",
+           p->month,
+           p->age);
     printf("╠══════════════════════════════════════╣\n");
     printf("║  HP:      %3d / %3d                  ║\n", p->hp, p->max_hp);
     printf("║  체력:    %3d / %3d                  ║\n", p->stamina, p->max_stamina);

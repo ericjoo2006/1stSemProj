@@ -3,41 +3,54 @@
 /* ------------------------------------------------
    create_boss
    Factory function for all exam bosses
-   year 1–3 = 중학교, 4–6 = 고등학교
-   is_midterm: 1=중간/기말, 0=모의고사, 2=수능
+   year 1–3 = 고1, 고2, 고3
+   exam_type: 0=모의고사, 1=중간고사, 2=기말고사, 3=수능
    ------------------------------------------------ */
-Boss create_boss(int year, int semester, int is_midterm) {
+/*
+   is_midterm 값:
+     0  = 모의고사 (3모/6모/9모)
+     1  = 중간고사
+     2  = 기말고사
+     3  = 수능 (final boss)
+*/
+Boss create_boss(int year, int month, int exam_type) {
     Boss b;
     memset(&b, 0, sizeof(Boss));
     b.year_required = year;
     b.is_final_boss = 0;
 
-    /* 수능 — final boss */
-    if (year == 6 && is_midterm == 2) {
+    /* 수능 */
+    if (exam_type == 3) {
         strcpy(b.name, "★ 대학수학능력시험 (수능) ★");
-        b.max_hp    = 500;
-        b.attack    = 30;
-        b.difficulty= 10;
+        b.max_hp     = 500;
+        b.attack     = 30;
+        b.difficulty = 10;
         b.is_final_boss = 1;
     }
-    /* 모의고사 (year 4–6 only) */
-    else if (is_midterm == 0) {
-        const char *mock_names[] = {"3월 전국모의고사", "6월 모의고사", "9월 모의고사"};
-        int mock_idx = (semester <= 3) ? semester - 1 : 0;
-        snprintf(b.name, sizeof(b.name), "[고%d] %s", year - 3, mock_names[mock_idx]);
-        b.max_hp     = 150 + (year - 4) * 50 + mock_idx * 30;
-        b.attack     = 10 + (year - 4) * 3 + mock_idx * 2;
-        b.difficulty = 4 + (year - 4) * 2 + mock_idx;
+    /* 모의고사 */
+    else if (exam_type == 0) {
+        const char *mock_name =
+            (month == 3) ? "3월 전국모의고사" :
+            (month == 6) ? "6월 모의고사"     : "9월 모의고사";
+        int mock_idx = (month == 3) ? 0 : (month == 6) ? 1 : 2;
+        snprintf(b.name, sizeof(b.name), "[고%d] %s", year, mock_name);
+        b.max_hp     = 100 + year * 30 + mock_idx * 20;
+        b.attack     =   8 + year *  2 + mock_idx *  2;
+        b.difficulty =   3 + year      + mock_idx;
     }
-    /* 중간고사 / 기말고사 */
+    /* 중간고사 */
+    else if (exam_type == 1) {
+        snprintf(b.name, sizeof(b.name), "[고%d] 중간고사", year);
+        b.max_hp     = 120 + year * 25;
+        b.attack     =   8 + year *  2;
+        b.difficulty =   4 + year;
+    }
+    /* 기말고사 */
     else {
-        const char *exam_type = (semester == 1) ? "중간고사" : "기말고사";
-        const char *school = (year <= 3) ? "중" : "고";
-        int grade = (year <= 3) ? year : year - 3;
-        snprintf(b.name, sizeof(b.name), "[%s%d] %s", school, grade, exam_type);
-        b.max_hp     = 80 + year * 20;
-        b.attack     = 5 + year * 2;
-        b.difficulty = 2 + year;
+        snprintf(b.name, sizeof(b.name), "[고%d] 기말고사", year);
+        b.max_hp     = 150 + year * 25;
+        b.attack     =  10 + year *  2;
+        b.difficulty =   5 + year;
     }
 
     b.hp = b.max_hp;
@@ -197,7 +210,7 @@ int run_battle(Player *p, Boss *boss) {
             printf("\n\n");
             print_separator();
             printf("  ★★★ 수능을 정복했습니다! ★★★\n");
-            printf("  당신의 6년간의 노력이 빛을 발했습니다.\n");
+            printf("  당신의 3년간의 노력이 빛을 발했습니다.\n");
             int final_score = get_total_score(p);
             printf("  최종 합산 점수: %d / %d\n", final_score, NUM_SUBJECTS * 100);
             print_separator();

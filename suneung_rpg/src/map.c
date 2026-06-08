@@ -154,6 +154,129 @@ int move_player(GameMap *m, char direction) {
 }
 
 /* ------------------------------------------------
+   friend_event_study
+   공부 장소에서 친구를 만날 확률 (40%)
+   발동 시 XP 보너스 + 메시지 출력
+   Returns 1 if event fired, 0 if not
+   ------------------------------------------------ */
+static int friend_event_study(Player *p, const char *place) {
+    if ((rand() % 10) >= 4) return 0;   /* 40% 확률 */
+
+    /* 친구 이름 랜덤 */
+    const char *friends[] = { "민준", "서연", "지호", "수아", "태양", "하은" };
+    const char *name = friends[rand() % 6];
+
+    /* 같이 공부 메시지 랜덤 */
+    const char *msgs[] = {
+        "같이 공부하자! 모르는 거 서로 물어보면서 했다.",
+        "경쟁심이 불타올랐다. 지기 싫어서 더 집중했다.",
+        "서로 문제 내주면서 공부했다. 생각보다 효율이 좋았다.",
+        "공부하다 잠깐 수다 떨었지만, 그래도 집중이 잘 됐다."
+    };
+    const char *msg = msgs[rand() % 4];
+
+    int xp_bonus = 20 + (rand() % 21);   /* +20~40 XP 보너스 */
+
+    printf("\n  [친구 등장!] %s이(가) %s에 있었다!\n", name, place);
+    printf("  \"%s\"\n", msg);
+    printf("  모든 과목 XP +%d!\n", xp_bonus);
+
+    for (int i = 0; i < NUM_SUBJECTS; i++) {
+        p->subjects[i].xp += xp_bonus;
+        /* 레벨업 체크 */
+        while (p->subjects[i].xp >= p->subjects[i].xp_to_next
+               && p->subjects[i].score < 100) {
+            p->subjects[i].xp       -= p->subjects[i].xp_to_next;
+            p->subjects[i].score    += 1;
+            p->subjects[i].xp_to_next = 100 + (p->subjects[i].score - 40) * 5;
+            printf("  ★ %s 점수 상승! -> %d점\n",
+                   p->subjects[i].name, p->subjects[i].score);
+        }
+    }
+    return 1;
+}
+
+/* ------------------------------------------------
+   friend_event_play
+   노는 장소에서 친구를 만날 확률 (50%)
+   발동 시 스트레스 추가 회복 + 돈/체력 추가 소모
+   Returns 1 if event fired, 0 if not
+   ------------------------------------------------ */
+static int friend_event_play(Player *p, const char *place) {
+    if ((rand() % 10) >= 5) return 0;   /* 50% 확률 */
+
+    const char *friends[] = { "민준", "서연", "지호", "수아", "태양", "하은" };
+    const char *name = friends[rand() % 6];
+
+    /* 노는 이벤트 종류 */
+    int event = rand() % 4;
+    printf("\n  [친구 등장!] %s이(가) %s에 있었다!\n", name, place);
+
+    switch (event) {
+        case 0:
+            printf("  같이 더 신나게 놀았다! (돈 -5,000원, 스트레스 -15 추가)\n");
+            if (p->money >= 5000) {
+                p->money  -= 5000;
+                p->stress -= 15;
+            } else {
+                printf("  돈이 없어서 친구가 사줬다... 미안하다.\n");
+                p->stress -= 10;
+            }
+            break;
+        case 1:
+            printf("  수다 떨다 보니 시간 가는 줄 몰랐다. (체력 -10, 스트레스 -20 추가)\n");
+            p->stamina -= 10;
+            p->stress  -= 20;
+            break;
+        case 2:
+            printf("  친구가 간식을 사줬다! 체력 +15\n");
+            p->stamina += 15;
+            p->stress  -= 10;
+            break;
+        case 3:
+            printf("  친구랑 내기 게임을 했다... 졌다. (돈 -3,000원)\n");
+            if (p->money >= 3000) p->money -= 3000;
+            p->stress  -= 5;   /* 그래도 스트레스는 풀림 */
+            break;
+    }
+
+    if (p->stress < 0)               p->stress  = 0;
+    if (p->stamina < 0)              p->stamina = 0;
+    if (p->stamina > p->max_stamina) p->stamina = p->max_stamina;
+    if (p->stress < 80) REMOVE_STATUS(p, STATUS_SICK);
+    if (p->stress < 40) REMOVE_STATUS(p, STATUS_STRESSED);
+    return 1;
+}
+
+/* ------------------------------------------------
+   friend_event_store
+   편의점에서 친구를 마주칠 확률 (30%)
+   친구한테 간식 사줌 → 돈 소모, 기분 업
+   ------------------------------------------------ */
+static int friend_event_store(Player *p) {
+    if ((rand() % 10) >= 3) return 0;   /* 30% 확률 */
+
+    const char *friends[] = { "민준", "서연", "지호", "수아", "태양", "하은" };
+    const char *name = friends[rand() % 6];
+
+    int cost = 2000 + (rand() % 3) * 1000;  /* 2,000~4,000원 */
+    printf("\n  [친구 등장!] 편의점에서 %s을(를) 우연히 만났다!\n", name);
+
+    if (p->money >= cost) {
+        printf("  간식을 사줬다. (-%d원)  스트레스 -10, 기분 좋다!\n", cost);
+        p->money  -= cost;
+        p->stress -= 10;
+        if (p->stress < 0) p->stress = 0;
+        REMOVE_STATUS(p, STATUS_STRESSED);
+    } else {
+        printf("  %s이(가) 간식을 사줬다. 고마워!\n  스트레스 -5\n", name);
+        p->stress -= 5;
+        if (p->stress < 0) p->stress = 0;
+    }
+    return 1;
+}
+
+/* ------------------------------------------------
    tile_action
    Performs the action for the tile the player
    is currently standing on.
@@ -169,6 +292,7 @@ static int tile_action(Player *p, char tile) {
         case TILE_SCHOOL:
             printf("\n[학교] 자습실에서 공부합니다.\n");
             self_study(p);
+            friend_event_study(p, "자습실");
             return 1;
 
         case TILE_HAGWON:
@@ -184,6 +308,7 @@ static int tile_action(Player *p, char tile) {
         case TILE_PCBANG:
             printf("\n[PC방] 스트레스를 풀어봅시다.\n");
             visit_pc_bang(p);
+            friend_event_play(p, "PC방");
             return 1;
 
         case TILE_STORE: {
@@ -270,15 +395,16 @@ static int tile_action(Player *p, char tile) {
             p->money -= cost;
             add_item(p, item);
             printf("[%s] 구매! (-%d원)\n", item.name, cost);
+            friend_event_store(p);
             return 0;
         }
 
         case TILE_LIBRARY:
             printf("\n[도서관] 조용한 환경에서 집중 공부합니다.\n");
-            /* Library gives STATUS_FOCUSED before studying */
             ADD_STATUS(p, STATUS_FOCUSED);
             printf("  집중력 버프 발동!\n");
             self_study(p);
+            friend_event_study(p, "도서관");
             return 1;
 
         case TILE_PARK:
@@ -292,13 +418,13 @@ static int tile_action(Player *p, char tile) {
                 printf("  스트레스 -%d, 체력 +15\n", s_before - p->stress);
                 if (p->stress < 80) REMOVE_STATUS(p, STATUS_SICK);
                 if (p->stress < 40) REMOVE_STATUS(p, STATUS_STRESSED);
+                friend_event_play(p, "공원");
             }
             return 1;
 
         case TILE_STUDYROOM:
             printf("\n[독서실] 조용한 독서실에서 밤새 공부합니다.\n");
             {
-                /* Studyroom: pay 5000, get focused buff + extra hours */
                 int cost = 5000;
                 if (p->money < cost) {
                     printf("  독서실 이용료 부족 (5,000원 필요)\n");
@@ -309,6 +435,7 @@ static int tile_action(Player *p, char tile) {
                 ADD_STATUS(p, STATUS_ENERGIZED);
                 printf("  집중+에너지 버프 발동! (-%d원)\n", cost);
                 self_study(p);
+                friend_event_study(p, "독서실");
             }
             return 1;
 
@@ -325,18 +452,28 @@ static int tile_action(Player *p, char tile) {
    day-ending action (or press Q for the old menu).
    ------------------------------------------------ */
 void run_map_day(Player *p, GameMap *m, int day) {
-    const char *year_names[] = {"", "중1", "중2", "중3", "고1", "고2", "고3"};
     int day_done = 0;
 
     while (!day_done) {
         clear_screen();
 
         /* Header */
-        printf("\n  [%s - %d학기 - %d일차]  용돈: %d원\n",
-               year_names[p->year], p->semester, day, p->money);
-        printf("  HP:%d  체력:%d  스트레스:%d  상태:",
+        const char *year_names[] = {"", "고1", "고2", "고3"};
+        const char *month_names[] = {
+            "","1월","2월","3월","4월","5월","6월",
+            "7월","8월","9월","10월","11월","12월"
+        };
+        int sem = (p->month <= 7) ? 1 : 2;
+        printf("\n");
+        printf("  ┌─────────────────────────────────────────┐\n");
+        printf("  │  %s  %s  %d학기  %d일차  |  용돈: %d원\n",
+               (p->year >= 1 && p->year <= 3) ? year_names[p->year] : "??",
+               (p->month >= 1 && p->month <= 12) ? month_names[p->month] : "??월",
+               sem, day, p->money);
+        printf("  │  HP:%d  체력:%d  스트레스:%d  상태:",
                p->hp, p->stamina, p->stress);
         print_status_flags(p->status_flags);
+        printf("  └─────────────────────────────────────────┘\n");
 
         /* Draw map */
         print_map(m);
